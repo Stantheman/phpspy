@@ -361,9 +361,18 @@ int main_pid(pid_t pid) {
         if (opt_pause) rv |= pause_pid(pid);                             /* maybe PTRACE_ATTACH */
         rv |= do_trace_ptr(&context);                                    /* trace */
         if (opt_pause) rv |= unpause_pid(pid);                           /* maybe PTRACE_DETACH */
-        if ((rv == 0 && ++n == opt_trace_limit) || (rv & 2) != 0) break; /* maybe apply trace limit */
+        /* maybe apply trace limit */
+        if ((rv == 0 && ++n == opt_trace_limit) || (rv & 2) != 0) {
+            /* TODO proper signal handling for non-pgrep modes */
+            context.event_handler(&context, PHPSPY_TRACE_EVENT_DEINIT);
+            return 1;
+        }
         clock_get(&end_time);
-        if (stop_time && clock_diff(&end_time, stop_time) >= 1) break;   /* maybe apply time limit */
+        /* maybe apply time limit */
+        if (stop_time && clock_diff(&end_time, stop_time) >= 1) {
+            context.event_handler(&context, PHPSPY_TRACE_EVENT_DEINIT);
+            return 1;
+        }
         calc_sleep_time(&end_time, &start_time, &sleep_time);
         nanosleep(&sleep_time, NULL);                                    /* sleep */
     }

@@ -7,6 +7,7 @@ static int is_already_attached(int pid);
 static void init_work_threads();
 static void deinit_work_threads();
 static int block_all_signals();
+static void shut_down_threads(int reason);
 static void handle_signal(int signum);
 static void *run_signal_thread(void *arg);
 
@@ -19,6 +20,7 @@ static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t can_produce = PTHREAD_COND_INITIALIZER;
 static pthread_cond_t can_consume = PTHREAD_COND_INITIALIZER;
 static int done_pipe[2];
+static char DONE = 'd';
 
 int main_pgrep() {
     long i;
@@ -123,7 +125,9 @@ static void *run_work_thread(void *arg) {
         attached_pids[worker_num] = avail_pids[--avail_pids_count];
         pthread_cond_signal(&can_produce);
         pthread_mutex_unlock(&mutex);
-        main_pid(attached_pids[worker_num]);
+        if (main_pid(attached_pids[worker_num]) != 0) {
+            shut_down_threads(DONE);
+        }
         attached_pids[worker_num] = 0;
     }
     return NULL;
@@ -172,11 +176,13 @@ static int block_all_signals() {
     return 0;
 }
 
+static void shut_down_threads(int reason) {
+    write(done_pipe[1], &reason, sizeof(char));
+}
+
 static void handle_signal(int signum) {
-    int rv;
     fcntl(done_pipe[1], F_SETFL, O_NONBLOCK);
-    rv = write(done_pipe[1], &signum, sizeof(int));
-    (void)rv;
+    shut_down_threads(signum);
 }
 
 static void *run_signal_thread(void *arg) {
